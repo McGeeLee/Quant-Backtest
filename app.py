@@ -6,16 +6,16 @@ from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Gemini Quant - 精简版", page_icon="📈", layout="wide")
 
-st.title("📊 量化平台数据源验证 (精简版)")
-st.caption("已移除不稳定源，保留 Tushare / Tiingo / Yahoo Finance")
+st.title("📊 量化平台数据源验证")
+# st.caption("已移除不稳定源，保留 Tushare / Tiingo / Yahoo Finance")
 
 # 侧边栏
 st.sidebar.header("⚙️ 配置")
-source = st.sidebar.selectbox("选择数据源", ["Yahoo Finance (推荐)", "Tushare (A股专业)", "Tiingo (美股需Key)"])
+source = st.sidebar.selectbox("选择数据源", ["Yahoo Finance", "Tushare", "Tiingo"])
 
 # 自动处理代码格式提示
 if "Yahoo" in source:
-    ticker = st.sidebar.text_input("代码 (如 AAPL 或 600519.SS)", value="AAPL")
+    ticker = st.sidebar.text_input("代码 (如 AAPL 或 600519.SS)", value="BTCUSD")
     s_type = "Yahoo"
 elif "Tushare" in source:
     ticker = st.sidebar.text_input("代码 (如 600519.SH)", value="600519.SH")
