@@ -115,4 +115,29 @@ if st.sidebar.button("🚀 点击获取并测试数据"):
                     st.subheader("原始数据样本")
                     st.dataframe(
                         df.tail(20).sort_values(by='Date', ascending=False), 
-                        use_container_
+                        use_container_width=True,
+                        height=550
+                    )
+                
+                # --- 第三行：数据统计 ---
+                with st.expander("查看描述性统计分析"):
+                    st.write(df.describe())
+                    
+            else:
+                st.warning("⚠️ 接口返回数据为空。请检查：1. Ticker 是否正确 2. API Key 是否在 Secrets 中配置 3. 网络是否通畅。")
+                
+        except Exception as e:
+            st.error(f"❌ 程序运行出错: {e}")
+else:
+    # 初始状态下的欢迎语
+    st.info("💡 请在左侧侧边栏配置参数，然后点击按钮开始测试数据流。")
+    
+    # 展示一个示例布局
+    c1, c2, c3 = st.columns(3)
+    c1.info("**Tiingo**: 需 API Key，适合美股精细化回测。")
+    c2.success("**AKShare**: 无需 Key，A 股数据最全。")
+    c3.warning("**Binance**: 加密货币首选，支持分钟级数据。")
+
+# 4. 页脚
+st.sidebar.markdown("---")
+st.sidebar.caption("Gemini Quant Framework v1.0")
