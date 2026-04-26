@@ -15,13 +15,13 @@ source = st.sidebar.selectbox("选择数据源", ["Yahoo Finance", "Tushare", "T
 
 # 自动处理代码格式提示
 if "Yahoo" in source:
-    ticker = st.sidebar.text_input("代码 (如 AAPL 或 600519.SS)", value="BTCUSD")
+    ticker = st.sidebar.text_input("代码 (如 AAPL 或 .SS.SZ.BJ)", value="BTC-USD")
     s_type = "Yahoo"
 elif "Tushare" in source:
-    ticker = st.sidebar.text_input("代码 (如 600519.SH)", value="600519.SH")
+    ticker = st.sidebar.text_input("代码 (.SH.SZ.BJ)", value="600519.SH")
     s_type = "Tushare"
 else:
-    ticker = st.sidebar.text_input("代码 (如 AAPL)", value="AAPL")
+    ticker = st.sidebar.text_input("代码 (AAPL 或 TSLA)", value="AAPL")
     s_type = "Tiingo"
 
 start_date = st.sidebar.date_input("开始日期", datetime.now() - timedelta(days=365))
