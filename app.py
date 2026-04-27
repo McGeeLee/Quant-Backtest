@@ -2,82 +2,120 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from data import data_manager  # 引用你之前的 data.py
+from data import data_manager
 from datetime import datetime
 
-# --- 核心引擎：增加配置提取功能 ---
-class BacktestEngine:
-    def __init__(self):
-        self.cash = 100000.0
-        self.portfolio = {}
-        self.history = []
+# --- 1. 上下文与引擎 ---
+class Context:
+    def __init__(self, cash, symbol):
+        self.cash = cash
+        self.symbol = symbol
+        self.portfolio = {symbol: 0}
+        self.current_dt = None
+        self.current_price = 0
         self.trades = []
 
-    def get_strategy_config(self, strategy_code):
-        """预运行代码，提取 CONFIG 字典"""
+class BacktestEngine:
+    def run(self, strategy_code, df):
+        # 提取配置
         local_scope = {}
-        try:
-            exec(strategy_code, {}, local_scope)
-            return local_scope.get('CONFIG', {})
-        except:
-            return {}
+        exec(strategy_code, {}, local_scope)
+        config = local_scope.get('CONFIG', {})
+        
+        ctx = Context(config.get('cash', 100000), config.get('ticker', 'AAPL'))
+        
+        # 定义下单函数
+        def order(amount):
+            cost = amount * ctx.current_price
+            if ctx.cash >= cost:
+                ctx.cash -= cost
+                ctx.portfolio[ctx.symbol] += amount
+                ctx.trades.append({"Date": ctx.current_dt, "Type": "Buy" if amount > 0 else "Sell", 
+                                   "Price": ctx.current_price, "Amount": abs(amount)})
+                return True
+            return False
 
-    def run(self, symbol, df, strategy_code):
-        # ... (此处逻辑同上一版，保持 Context 和 Event Loop 不变)
-        # 为节省篇幅，核心逻辑参考上一版 app.py 的 run 函数
-        pass
+        # 注入环境
+        local_scope.update({'context': ctx, 'order': order, 'pd': pd, 'np': np})
+        if 'initialize' in local_scope:
+            local_scope['initialize'](ctx)
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="OpenQuant Code-Mode", layout="wide")
+        history = []
+        for i in range(len(df)):
+            row = df.iloc[i]
+            ctx.current_dt = row['Date']
+            ctx.current_price = row['Close']
+            
+            if 'handle_data' in local_scope:
+                local_scope['handle_data'](ctx, df.iloc[:i+1])
+            
+            total_val = ctx.cash + ctx.portfolio[ctx.symbol] * ctx.current_price
+            history.append({"Date": ctx.current_dt, "Equity": total_val, "Price": ctx.current_price})
+            
+        return pd.DataFrame(history), pd.DataFrame(ctx.trades)
 
+# --- 2. UI 界面 ---
+st.set_page_config(page_title="OpenQuant", layout="wide")
 st.title("💻 纯代码模式回测平台")
 
-# 默认代码模板：直接在里面写配置
-default_code = """# --- 1. 配置区域 ---
-CONFIG = {
-    "source": "Yahoo",        # 数据源: Tushare, Yahoo, Tiingo
-    "ticker": "AAPL",         # 股票代码
-    "start": "2023-01-01",    # 开始日期
-    "end": "2024-01-01",      # 结束日期
-    "cash": 100000            # 初始资金
+default_code = """CONFIG = {
+    "source": "Yahoo", 
+    "ticker": "AAPL",
+    "start": "2023-01-01",
+    "end": "2024-01-01",
+    "cash": 100000
 }
 
-# --- 2. 策略逻辑 ---
 def initialize(context):
     context.win = 20
 
 def handle_data(context, data):
-    ma = data['Close'].rolling(window=context.win).mean().iloc[-1]
+    if len(data) < context.win: return
+    ma = data['Close'].rolling(context.win).mean().iloc[-1]
     price = data['Close'].iloc[-1]
-    curr_pos = context.portfolio.get(context.symbol, 0)
+    pos = context.portfolio[context.symbol]
     
-    if price > ma and curr_pos == 0:
-        order(100)
-    elif price < ma and curr_pos > 0:
-        order(-100)
+    if price > ma and pos == 0: order(100)
+    elif price < ma and pos > 0: order(-100)
 """
 
-# 单操作台布局
-strategy_text = st.text_area("在代码中修改 CONFIG 即可更改配置", value=default_code, height=500)
+strategy_text = st.text_area("在代码中修改 CONFIG 即可更改配置", value=default_code, height=400)
 
 if st.button("🚀 执行代码并回测", type="primary"):
-    engine = BacktestEngine()
+    # 预解析配置获取数据
+    temp_scope = {}
+    exec(strategy_text, {}, temp_scope)
+    cfg = temp_scope.get('CONFIG', {})
     
-    # 第一步：提取配置
-    config = engine.get_strategy_config(strategy_text)
-    source = config.get("source", "Yahoo")
-    ticker = config.get("ticker", "AAPL")
-    start = config.get("start", "2023-01-01")
-    end = config.get("end", "2024-01-01")
-
-    # 第二步：获取数据
-    with st.spinner(f"正在从 {source} 获取 {ticker} 数据..."):
-        df = data_manager.get_data(source, ticker, start, end)
-
+    df = data_manager.get_data(cfg['source'], cfg['ticker'], cfg['start'], cfg['end'])
+    
     if not df.empty:
-        # 第三步：运行回测（逻辑同前）
-        # ... 执行引擎并绘图
-        st.success(f"回测完成：{ticker} ({start} 至 {end})")
-        # (此处补全绘图逻辑即可)
+        engine = BacktestEngine()
+        history, trades = engine.run(strategy_text, df)
+        
+        # --- 补全的结果展示区 ---
+        st.divider()
+        c1, c2 = st.columns([3, 1])
+        
+        with c1:
+            st.subheader("📈 收益曲线")
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=history['Date'], y=history['Equity'], name='策略净值', line=dict(color='#1f77b4')))
+            # 基准对比
+            benchmark = (history['Price'] / history['Price'].iloc[0]) * cfg['cash']
+            fig.add_trace(go.Scatter(x=history['Date'], y=benchmark, name='基准收益', line=dict(dash='dash', color='gray')))
+            fig.update_layout(hovermode="x unified", height=400, margin=dict(l=0,r=0,t=0,b=0))
+            st.plotly_chart(fig, use_container_width=True)
+
+        with c2:
+            st.subheader("📊 核心指标")
+            total_ret = (history['Equity'].iloc[-1] / cfg['cash'] - 1) * 100
+            st.metric("最终资产", f"${history['Equity'].iloc[-1]:,.2f}")
+            st.metric("累计收益率", f"{total_ret:.2f}%")
+            st.write(f"交易次数: {len(trades)}")
+
+        if not trades.empty:
+            with st.expander("📝 交易明细"):
+                st.dataframe(trades, use_container_width=True)
     else:
-        st.error("无法获取数据，请检查 CONFIG 中的代码格式或日期。")
+        st.error("数据加载失败，请检查配置。")
