@@ -6,3 +6,4 @@ akshare
 tushare
 tiingo
 python-binance
+numpy
